@@ -1,4 +1,4 @@
-### The following project has been adupted by M. Pyrina, 2025 from the following:
+### The following project has been adapted by M. Pyrina, 2025 from the following:
 
 ## Generative diffusion-based downscaling for climate
 ## Robbie A. Watt & Laura A. Mansfield      <https://arxiv.org/abs/2404.17752>
