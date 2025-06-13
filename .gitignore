@@ -1,0 +1,19 @@
+# Data and models
+data/
+Model_chpt/
+__pycache__/
+*.pyc
+*.ipynb_checkpoints
+
+# VSCode and Jupyter metadata
+.vscode/
+*.swp
+.DS_Store
+
+# Conda environments
+env/
+*.env
+*.yml
+
+# Output images
+*.png
