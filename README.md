@@ -1,29 +1,29 @@
-### The following project has been adapted by M. Pyrina, 2025 from the following:
+## The following project has been adapted by M. Pyrina, 2025 from the following:
 
-## Generative diffusion-based downscaling for climate
-## Robbie A. Watt & Laura A. Mansfield      <https://arxiv.org/abs/2404.17752>
+### Generative diffusion-based downscaling for climate
+### Robbie A. Watt & Laura A. Mansfield      <https://arxiv.org/abs/2404.17752>
 
 ![plot](./example.png)
 
 This repo contains code to go alongside Watt & Mansfield (2024) preprint. In this preprint, we apply a diffusion based model and a Unet to a downscaling problem with climate data. The diffusion model is based on the implementation by T. Karras et al. (<https://arxiv.org/abs/2206.00364>) and the code is addapted from <https://github.com/NVlabs/edm>.
 
 
-## File structure
+### File structure
 * src: contains code used to train model
 * inference: contains inference and plotting scripts 
 * Model_chpt: contains model checkpoints
 
-## Usage
-### Data
+### Usage
+#### Data
 We are using s2s hindcast data. In order to train the model we also create the gridded observational data in the format of the s2s hindcasts.
 
-### Dependencies
+#### Dependencies
 python>=3.9, torch, tensorboard, xarray, netcdf4, cartopy, matplotlib, scipy, numpy
 
-### Training
+#### Training
 To train either the diffusion or unet models from scratch, simply run the `src/TrainDiffusion.py` or `src/TrainUnet.py` script from the project root directory.
 
-### Inference (NOT ADAPTED YET)
+#### Inference (NOT ADAPTED YET)
 After training, the inference scripts can be run in the following order:
 1. `save_test_truth.py`: this script simply processes the true test data to save it into one file for easier comparison to other variables
 2. `save_test_preds.py`: this script runs through all test data and saves the output into one file. You need to run this for each model. `modelname=UNet` for the standard UNet, `modelname=LinearInterpolation` for linear interpolation of coarse resolution variables onto the high resolution grid (i.e., the inputs to the model) and `modelname=Diffusion` for the diffusion model. When running the Diffusion model, we generate many possible samples in a loop, each seeded with a different random number, currently we loop over `rngs=range(0, 30)`.
@@ -36,7 +36,7 @@ Plotting scripts:
 * `plot_spectrum.py` plots the power spectrum for all methods (Fig. 3)
 
 
-## Citation of original code
+### Citation of original code
 ```
 @misc{watt2024generative,
       title={Generative Diffusion-based Downscaling for Climate}, 
@@ -48,7 +48,7 @@ Plotting scripts:
 }
 ```
 
-## Current work
+### Current work
 ```
 @misc{pyrina2025_ch_downscaling,
       title={Generative Diffusion-based Downscaling for Switzerland}, 
