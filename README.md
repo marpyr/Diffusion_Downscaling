@@ -14,7 +14,7 @@ This repo contains code to go alongside Watt & Mansfield (2024) preprint. In thi
 * Model_chpt: contains model checkpoints
 
 ## Usage
-### Download ERA5 data
+### Data
 We are using s2s hindcast data. In order to train the model we also create the gridded observational data in the format of the s2s hindcasts.
 
 ### Dependencies
