@@ -5,6 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from DatasetCH import UpscaleDataset
 from torch.utils.tensorboard import SummaryWriter
+import numpy as np
+import xarray as xr
 
 
 # Loss class taken from EDS_Diffusion/loss.py
@@ -19,7 +21,7 @@ class EDMLoss:
         self.sigma_data = sigma_data
 
     def __call__(self, net, images, conditional_img=None, labels=None,
-                 augment_pipe=None):
+                 augment_pipe=None, mask=None):
         # learn to denoise noisy inputs:
         rnd_normal = torch.randn([images.shape[0], 1, 1, 1], device=images.device)
         # This line generates a random noise scale sigma from a log-normal distribution.
@@ -34,25 +36,14 @@ class EDMLoss:
         n = torch.randn_like(y) * sigma # add noise
         D_yn = net(y + n, sigma, conditional_img, labels,
                    augment_labels=augment_labels) # denoise
-        
-        # --- START MODIFICATION for NaN handling in EDMLoss ---
-        # Identify non-NaN values in the ground truth images (y)
-        non_nan_mask = ~torch.isnan(y) # y is your ground truth fine image
 
-        # Calculate the element-wise squared error
-        element_wise_loss = weight * ((D_yn - y) ** 2)
-        
-        # Apply the mask to the element-wise loss
-        # This will select only the loss values corresponding to non-NaN pixels
-        valid_loss_pixels = element_wise_loss[non_nan_mask]
-
-        # Calculate the mean only over valid pixels
-        if valid_loss_pixels.numel() > 0: # Ensure there are valid pixels to avoid division by zero
-            loss = torch.mean(valid_loss_pixels)
+        mse = (D_yn - y) ** 2
+        if mask is not None:
+            loss = weight * mse * mask
+            loss = loss.sum() / mask.sum().clamp(min=1.0); print("THE MASK IS USED")
         else:
-            # If no valid pixels in the current batch, return a zero loss
-            loss = torch.tensor(0.0, device=images.device, dtype=images.dtype)
-        # --- END MODIFICATION ---
+            loss = weight * mse
+            loss = loss.mean(); print("THE MASK IS NOT USED")
 
         return loss
 
@@ -74,8 +65,6 @@ def training_step(model, loss_fn, optimiser, data_loader, scaler, step,
     :return: Loss value
     """
 
-    print("THIS IS WITH NAN")
-
     model.train()
     with tqdm(total=len(data_loader), dynamic_ncols=True) as tq:
         tq.set_description(f"Train :: Epoch: {step}")
@@ -84,9 +73,14 @@ def training_step(model, loss_fn, optimiser, data_loader, scaler, step,
         step_loss = 0
         for i, batch in enumerate(data_loader):
             tq.update(1)
-
             image_input = batch["inputs"].to(device)
             image_output = batch["targets"].to(device)
+            #mask = batch["mask"].to(device) if batch["mask"] is not None else None
+            # to make sure that mask is a tensor before calling .to(device)
+            mask = batch.get("mask", None)
+            mask = mask.to(device) if mask is not None else None
+
+
             #day = batch["doy"].to(device)
             #hour = batch["hour"].to(device)
             #condition_params = torch.stack((day, hour), dim=1)
@@ -95,8 +89,8 @@ def training_step(model, loss_fn, optimiser, data_loader, scaler, step,
             with torch.cuda.amp.autocast():
                 ## Compute loss with mixed precision
                 loss = loss_fn(net=model, images=image_output,
-                               conditional_img=image_input) # i removed labels=condition_params
-                # No need for `loss = torch.mean(loss)` here, as EDMLoss now returns a scalar loss.
+                               conditional_img=image_input, mask=mask) # i removed labels=condition_params
+                loss = torch.mean(loss)
 
             # backpropagation
             scaler.scale(loss).backward()
@@ -109,7 +103,7 @@ def training_step(model, loss_fn, optimiser, data_loader, scaler, step,
 
                 if writer is not None:
                     writer.add_scalar("Loss/train", step_loss / accum,
-                                     step * len(data_loader) + i)
+                                      step * len(data_loader) + i)
                 step_loss = 0
 
             epoch_losses.append(loss.item())
@@ -122,8 +116,8 @@ def training_step(model, loss_fn, optimiser, data_loader, scaler, step,
 #Samples noise, Applies Euler + 2nd order correction steps, Each step denoises with the model to gradually refine the image
 @torch.no_grad()
 def sample_model_dif(model, dataloader, num_steps=40, sigma_min=0.002,
-                     sigma_max=80, rho=7, S_churn=40, S_min=0,
-                     S_max=float('inf'), S_noise=1, device="cuda"):
+                 sigma_max=80, rho=7, S_churn=40, S_min=0,
+                 S_max=float('inf'), S_noise=1, device="cuda"):
 
     batch = next(iter(dataloader))
     images_input = batch["inputs"].to(device) # These are my upscaled coarse data
@@ -138,17 +132,20 @@ def sample_model_dif(model, dataloader, num_steps=40, sigma_min=0.002,
     sigma_min = max(sigma_min, model.sigma_min)
     sigma_max = min(sigma_max, model.sigma_max)
 
-    init_noise = torch.randn((images_input.shape[0], 1, images_input.shape[2],
+    #init_noise = torch.randn((images_input.shape[0], 3, images_input.shape[2],
+                              #images_input.shape[3]),
+                             #dtype=torch.float64, device=device)
+    init_noise = torch.randn((images_input.shape[0], 1, images_input.shape[2], # Change 3 to 1 here
                               images_input.shape[3]),
                              dtype=torch.float64, device=device)
 
     # Time step discretization.
     step_indices = torch.arange(num_steps, dtype=torch.float64,
-                                 device=init_noise.device)
+                                device=init_noise.device)
     t_steps = (sigma_max ** (1 / rho) + step_indices / (num_steps - 1)
                * (sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
     t_steps = torch.cat([model.round_sigma(t_steps),
-                          torch.zeros_like(t_steps[:1])])  # t_N = 0
+                         torch.zeros_like(t_steps[:1])])  # t_N = 0
 
     # Main sampling loop.
     x_next = init_noise.to(torch.float64) * t_steps[0]
@@ -184,32 +181,10 @@ def sample_model_dif(model, dataloader, num_steps=40, sigma_min=0.002,
     fig, ax = dataloader.dataset.plot_batch(coarse, fine, predicted)
 
     plt.subplots_adjust(wspace=0, hspace=0)
-    
-    # --- START MODIFICATION for NaN handling and MSE in Error Calculation ---
-    # Ensure all tensors for error calculation are on CPU for consistent NaN handling
-    # predicted is already on CPU due to .detach().cpu() above
-    fine_cpu = fine.cpu()
-    coarse_cpu = coarse.cpu()
+    base_error = torch.mean(torch.abs(fine - coarse))
+    pred_error = torch.mean(torch.abs(fine - predicted))
 
-    # Create a mask for non-NaN values in the ground truth (fine_cpu)
-    non_nan_mask = ~torch.isnan(fine_cpu)
-
-    # Apply the mask to all tensors to get only valid (non-NaN) pixels
-    masked_fine = fine_cpu[non_nan_mask]
-    masked_coarse = coarse_cpu[non_nan_mask]
-    masked_predicted = predicted[non_nan_mask] # `predicted` is already on CPU
-
-    # Calculate MSE for non-NaN values
-    if masked_fine.numel() > 0: # Ensure there are valid pixels
-        base_error = torch.mean((masked_fine - masked_coarse) ** 2).item() # MSE for coarse vs fine
-        pred_error = torch.mean((masked_fine - masked_predicted) ** 2).item() # MSE for predicted vs fine
-    else:
-        # If no valid pixels, set errors to 0.0 or float('nan') as appropriate
-        base_error = 0.0
-        pred_error = 0.0
-    # --- END MODIFICATION ---
-
-    return (fig, ax), (base_error, pred_error), predicted.numpy() # Return numpy array
+    return (fig, ax), (base_error.item(), pred_error.item()), predicted.cpu().numpy() 
 
 
 def main():
@@ -217,6 +192,10 @@ def main():
     learning_rate = 1e-4
     num_epochs = 10000
     accum = 8
+
+    import os
+    os.makedirs("./results", exist_ok=True)
+    os.makedirs("./Model", exist_ok=True)
 
     # Define device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -227,7 +206,7 @@ def main():
     img_resolution=(256, 128),   # (W_out, H_out) — note this is (width, height)
     in_channels=2,                # base channel size (can be tuned) NUM OF PRED VARS
     out_channels=1,     # target variable channels (e.g. temperature)
-                         # in this case 2, as 1 for coarse image and one for fine image
+                        # in this case 2, as 1 for coarse image and one for fine image (Since you're always concatenating the target + coarse image, in_channels must be 2)
     label_dim=0         # set to 0 if you're not using extra inputs like day/hour
 )
     network.to(device)
@@ -235,14 +214,15 @@ def main():
     # define the datasets
     ifs_dir = '/s2s/mpyrina/ECMWF_MCH/Europe_eval/s2s_hind_2022/all/'
     obs_dir = '/net/cfc/s2s_nobackup/mpyrina/TABSD_ifs_like/'
+    mask_dir = '/net/cfc/s2s_nobackup/mpyrina/TABSD_ifs_like/TabsD_mask_static.nc'
 
     dataset_train = UpscaleDataset(coarse_data_dir = ifs_dir, highres_data_dir = obs_dir,
     year_start=2005, year_end=2008, month=815,  
-    constant_variables=None, constant_variables_filename=None)
+    constant_variables=None, constant_variables_filename=None, mask_path=mask_dir)
 
     dataset_test = UpscaleDataset(coarse_data_dir = ifs_dir, highres_data_dir = obs_dir,
     year_start=2009, year_end=2010, month=815,  
-    constant_variables=None, constant_variables_filename=None)
+    constant_variables=None, constant_variables_filename=None, mask_path=mask_dir)
 
     dataloader_train = torch.utils.data.DataLoader(
         dataset_train, batch_size=batch_size, shuffle=True, num_workers=4)
@@ -267,20 +247,23 @@ def main():
                                    dataloader_train, scaler, step,
                                    accum, writer)
         losses.append(epoch_loss)
-
-        if (step + 0) % 5 == 0:
-            (fig, ax), (base_error, pred_error) = sample_model_dif( # Changed to sample_model_dif
-                network, dataloader_test)
-            fig.savefig(f"./results/{step}.png", dpi=300)
-            plt.close(fig)
-
-            writer.add_scalar("Error/base", base_error, step)
-            writer.add_scalar("Error/pred", pred_error, step)
-
+        
         # save the model
         if losses[-1] == min(losses):
             torch.save(network.state_dict(), f"./Model/{step}.pt")
+        
+        if (step + 0) % 5 == 0:
+            # Plot and save
+            (fig, ax), (base_error, pred_error), predicted_numpy_array = sample_model_dif(network, dataloader_test, device=device)
+            plt.show()
+            fig.savefig(f"./results/{step}.png", dpi=300)
+            plt.close(fig)
+            writer.add_scalar("Error/base", base_error, step)
+            writer.add_scalar("Error/pred", pred_error, step)
+
+
 
 
 if __name__ == "__main__":
     main()
+

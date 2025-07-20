@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from Network import UNet
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-import numpy as np 
+
 
 def train_step(model, loss_fn, data_loader, optimiser, scaler, step, accum=4,
                writer=None, device="cuda"):
@@ -22,10 +22,8 @@ def train_step(model, loss_fn, data_loader, optimiser, scaler, step, accum=4,
     :param device: device to use
     :return: loss value
     """
-    print("THIS IS WITH NAN")
 
     model.train()
-    step_loss = 0 # Initialize step_loss here
 
     with tqdm(total=len(data_loader), dynamic_ncols=True) as tq:
         tq.set_description(f"Train :: Epoch: {step}")
@@ -35,9 +33,9 @@ def train_step(model, loss_fn, data_loader, optimiser, scaler, step, accum=4,
             tq.update(1)
 
             image_input = batch["inputs"].to(device)
-            print(f"Batch input shape: {image_input.shape}")
-            image_output = batch["targets"].to(device) # This is your ground truth fine image
-            print(f"Batch output shape: {image_output.shape}")
+            print(f"Batch input shape: {image_input.shape}")  # ← added this
+            image_output = batch["targets"].to(device)
+            print(f"Batch output shape: {image_output.shape}")  # ← added this
             #day = batch["doy"].to(device)
             #hour = batch["hour"].to(device)
             #condition_params = torch.stack((day, hour), dim=1)
@@ -46,42 +44,22 @@ def train_step(model, loss_fn, data_loader, optimiser, scaler, step, accum=4,
             with torch.cuda.amp.autocast():
                 model_out = model(image_input,
                                   class_labels=None)
-
-                # --- START MODIFICATION for NaN handling in Loss Calculation ---
-                # Identify non-NaN values in the ground truth images (image_output)
-                non_nan_mask = ~torch.isnan(image_output)
-
-                # Calculate the element-wise squared difference between prediction and ground truth
-                squared_diff = (model_out - image_output)**2
-                
-                # Apply the mask to select only the squared differences from non-NaN pixels
-                valid_squared_diff = squared_diff[non_nan_mask]
-
-                # Calculate the mean only over valid pixels
-                if valid_squared_diff.numel() > 0: # Ensure there are valid pixels to avoid division by zero
-                    loss = torch.mean(valid_squared_diff)
-                else:
-                    # If no valid pixels in the current batch, return a zero loss
-                    loss = torch.tensor(0.0, device=image_output.device, dtype=image_output.dtype)
-                # --- END MODIFICATION ---
+                loss = loss_fn(model_out, image_output)
 
             # backpropagation
             scaler.scale(loss).backward()
-            step_loss += loss.item() # Accumulate loss for print/tensorboard
 
             if (i + 1) % accum == 0:
                 scaler.step(optimiser)
                 scaler.update()
                 optimiser.zero_grad(set_to_none=True)
 
-                if writer is not None:
-                    writer.add_scalar("Loss/train", step_loss / accum,
-                                     step * len(data_loader) + i)
-                step_loss = 0 # Reset accumulated loss after optimization step
-
-            epoch_losses.append(loss.item()) # Append the actual loss for the batch
+            epoch_losses.append(loss.item())
             tq.set_postfix_str(s=f"Loss: {loss.item():.4f}")
 
+            if writer is not None:
+                writer.add_scalar("Loss/train", loss.item(),
+                                  step * len(data_loader) + i)
 
         mean_loss = sum(epoch_losses) / len(epoch_losses)
         tq.set_postfix_str(s=f"Loss: {mean_loss:.4f}")
@@ -121,33 +99,11 @@ def sample_model(model, dataloader, device="cuda"):
     fig, ax = dataloader.dataset.plot_batch(coarse, fine, predicted)
 
     plt.subplots_adjust(wspace=0, hspace=0)
-
-    # --- START MODIFICATION for NaN handling and MSE in Error Calculation ---
-    # Ensure all tensors for error calculation are on CPU for consistent NaN handling
-    # predicted is already on CPU due to .detach().cpu() above
-    fine_cpu = fine.cpu()
-    coarse_cpu = coarse.cpu()
-
-    # Create a mask for non-NaN values in the ground truth (fine_cpu)
-    non_nan_mask = ~torch.isnan(fine_cpu)
-
-    # Apply the mask to all tensors to get only valid (non-NaN) pixels
-    masked_fine = fine_cpu[non_nan_mask]
-    masked_coarse = coarse_cpu[non_nan_mask]
-    masked_predicted = predicted[non_nan_mask] # `predicted` is already on CPU
-
-    # Calculate MSE for non-NaN values
-    if masked_fine.numel() > 0: # Ensure there are valid pixels
-        base_error = torch.mean((masked_fine - masked_coarse) ** 2).item() # MSE for coarse vs fine
-        pred_error = torch.mean((masked_fine - masked_predicted) ** 2).item() # MSE for predicted vs fine
-    else:
-        # If no valid pixels, set errors to 0.0 or float('nan') as appropriate
-        base_error = 0.0
-        pred_error = 0.0
-    # --- END MODIFICATION ---
+    base_error = torch.mean(torch.abs(fine - coarse))
+    pred_error = torch.mean(torch.abs(fine - predicted))
 
     #return (fig, ax), (base_error.item(), pred_error.item())
-    return (fig, ax), (base_error, pred_error), predicted.numpy() # Convert to numpy for easy access
+    return (fig, ax), (base_error.item(), pred_error.item()), predicted.cpu().numpy() # Convert to numpy for easy access
 
 
 def main():
@@ -190,7 +146,7 @@ def main():
     # Define the tensorboard writer
     writer = SummaryWriter("./runs_unet")
 
-    loss_fn = torch.nn.MSELoss() # This is instantiated as a standard MSELoss, but our train_step will handle the masking
+    loss_fn = torch.nn.MSELoss()
 
     # train the model
     losses = []

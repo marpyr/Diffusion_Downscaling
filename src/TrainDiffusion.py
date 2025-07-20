@@ -188,7 +188,7 @@ def main():
     img_resolution=(256, 128),   # (W_out, H_out) — note this is (width, height)
     in_channels=2,                # base channel size (can be tuned) NUM OF PRED VARS
     out_channels=1,     # target variable channels (e.g. temperature)
-                        # in this case 2, as 1 for coarse image and one for fine image
+                        # in this case 2, as 1 for coarse image and one for fine image (Since you're always concatenating the target + coarse image, in_channels must be 2)
     label_dim=0         # set to 0 if you're not using extra inputs like day/hour
 )
     network.to(device)

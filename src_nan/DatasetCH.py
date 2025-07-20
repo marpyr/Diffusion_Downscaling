@@ -12,7 +12,7 @@ class UpscaleDataset(torch.utils.data.Dataset):
                  in_shape=(16, 32), # my coarse CH shape 
                  out_shape=(128, 256), # my fine CH shape expanded from 103, 241
                  constant_variables=None,
-                 constant_variables_filename=None
+                 constant_variables_filename=None, mask_path=None
                  ):
         """
         :param coarse_data_dir: path to coarse-resolution dataset
@@ -32,15 +32,16 @@ class UpscaleDataset(torch.utils.data.Dataset):
         self.in_shape = in_shape
         self.out_shape = out_shape
         self.constant_variables = constant_variables
-
+        
+        # IFS data are in Kelvin and have no nan values.
         self.coarse_filenames = [f"IFS_EXT_HC_{year}0{month}_T_2M.nc" for year in range(year_start, year_end)]
         self.coarse_filepaths = [coarse_data_dir + coarse_filename for coarse_filename in self.coarse_filenames]
-        
-        self.highres_filenames = [f"TabsD_nan_expanded_EXT_HC_{year}0{month}_T_2M.nc" for year in range(year_start, year_end)]
+        # TabsD data have been tranfrormed to Kelvin and instead of nan there are zeros. A static mask is additionaly used for training.
+        self.highres_filenames = [f"TabsD_expanded_EXT_HC_{year}0{month}_T_2M.nc" for year in range(year_start, year_end)]
         self.highres_filepaths = [highres_data_dir + highres_filename for highres_filename in self.highres_filenames]
 
         # Open first coarse file
-        print("Test - new upscale with nan")
+        print("Test - new upscale")
         ds_coarse_c = xr.open_dataset(coarse_data_dir + self.coarse_filenames[0], engine="netcdf4")
         ds_coarse = ds_coarse_c.sel(x_1=slice(west, east)).sel(y_1=slice(south, north))
         
@@ -97,6 +98,17 @@ class UpscaleDataset(torch.utils.data.Dataset):
         self.inputs = coarse_upscaled
         print("Input shape (should be [N, 1, H, W]):", self.inputs.shape)
         self.targets = self.data_fine
+        
+        if mask_path is not None:
+            print("Loading static mask...")
+            mask_ds = xr.open_dataset(mask_path)
+            mask_array = mask_ds["mask"].values.astype(np.float32)  # [lat, lon]
+            self.mask = torch.from_numpy(mask_array).unsqueeze(0).unsqueeze(0)  # [1, 1, H, W]
+            self.mask = self.mask.expand(self.targets.shape[0], -1, -1, -1)    # [N, 1, H, W]
+            assert self.mask.shape[-2:] == self.out_shape, f"Mask shape {self.mask.shape[-2:]} != out_shape {self.out_shape}"
+        else:
+            self.mask = None
+
         self.fine = self.data_fine
         self.coarse = coarse_upscaled
 
@@ -127,6 +139,7 @@ class UpscaleDataset(torch.utils.data.Dataset):
             "targets": self.targets[idx],
             "fine": self.fine[idx],
             "coarse": self.coarse[idx],
+            "mask": self.mask[idx] if self.mask is not None else None,
         }
 
     def residual_to_fine_image(self, residual, coarse):
