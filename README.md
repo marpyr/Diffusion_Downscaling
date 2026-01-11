@@ -52,8 +52,8 @@ Plotting scripts:
 ```
 @misc{pyrina2025_ch_downscaling,
       title={Generative Diffusion-based Downscaling for Subseasonal Prediction}, 
-      author={M. Pyrina, A. Imamovic, M. Samarin, C. Spirig, D. Domeisen},
-      year={2025},
+      author={M. Pyrina, D. Büeler, A. Imamovic, C. Spirig, D. Domeisen},
+      year={2026},
       eprint=xxx,
       archivePrefix={arXiv},
       primaryClass=xxx
