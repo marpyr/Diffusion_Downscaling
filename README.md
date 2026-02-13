@@ -1,7 +1,7 @@
-### The following project has been adopted by M. Pyrina, 2026 from the following:
+## The following project has been adopted by M. Pyrina, 2026 from the following:
 
 ## Generative diffusion-based downscaling for climate
-## Robbie A. Watt & Laura A. Mansfield      <https://arxiv.org/abs/2404.17752> using the implementation by T. Karras et al. (<https://arxiv.org/abs/2206.00364>) and code addapted from <https://github.com/NVlabs/edm>.
+#### Robbie A. Watt & Laura A. Mansfield      <https://arxiv.org/abs/2404.17752> using the implementation by T. Karras et al. (<https://arxiv.org/abs/2206.00364>) and code addapted from <https://github.com/NVlabs/edm>.
 
 ![plot](./example.png)
 
