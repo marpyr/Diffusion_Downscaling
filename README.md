@@ -1,27 +1,29 @@
-### The following project has been adopted by M. Pyrina, 2025 from the following:
+### The following project has been adopted by M. Pyrina, 2026 from the following:
 
 ## Generative diffusion-based downscaling for climate
-## Robbie A. Watt & Laura A. Mansfield      <https://arxiv.org/abs/2404.17752>
+## Robbie A. Watt & Laura A. Mansfield      <https://arxiv.org/abs/2404.17752> using the implementation by T. Karras et al. (<https://arxiv.org/abs/2206.00364>) and code addapted from <https://github.com/NVlabs/edm>.
 
 ![plot](./example.png)
 
-This repo contains code to go alongside Watt & Mansfield (2024) preprint. In this preprint, we apply a diffusion based model and a Unet to a downscaling problem with climate data. The diffusion model is based on the implementation by T. Karras et al. (<https://arxiv.org/abs/2206.00364>) and the code is addapted from <https://github.com/NVlabs/edm>.
+This repo contains code to go alongside "Joint Bias Correction and Downscaling of Subseasonal Forecasts via Diffusion Models" (2026) preprint. In this work, we apply a diffusion based model (DM) to a downscaling and bias correction task using ECMWF subseasonal temperature hindcast data and gridded temperature observations from MeteoSwiss over Switzerland.
 
 
 ## File structure
-* src: contains code used to train model
-* inference: contains inference and plotting scripts 
-* Model_chpt: contains model checkpoints
+* src_mean: contains code used to train the DM model using the ensemble mean (used in the manuscript)
+* src_mems: contains code used to train the DM model using the ensemble members (not used in the manuscript, only partly tested)
+* inference_mean: contains inference scripts for the ensemble_mean training and generates 50 members from the DM distribution
+* inference_mems: contains inference scripts for the ensemble_members training and applies the DM mean learned function to downscale the actuall ECMWF hindcasts (not used in the manuscript, only partly tested) 
+* Model_chpt: contains model checkpoints for the src_mean training
 
 ## Usage
 ### Data
-We are using s2s hindcast data. In order to train the model we also create the gridded observational data in the format of the s2s hindcasts.
+We are using ECMWF subseasonal hindcast data and gridded observational data from MeteoSwiss.
 
 ### Dependencies
 python>=3.9, torch, tensorboard, xarray, netcdf4, cartopy, matplotlib, scipy, numpy
 
 ### Training
-To train either the diffusion or unet models from scratch, simply run the `src/TrainDiffusion.py` or `src/TrainUnet.py` script from the project root directory.
+To train the diffusion model from scratch, simply run the `src_mean/TrainDiffusion.py` script from the project root directory.
 
 ### Inference (NOT ADAPTED YET)
 After training, the inference scripts can be run in the following order:
@@ -50,9 +52,9 @@ Plotting scripts:
 
 ## Current work
 ```
-@misc{pyrina2025_ch_downscaling,
-      title={Generative Diffusion-based Downscaling for Subseasonal Prediction}, 
-      author={M. Pyrina, D. Büeler, A. Imamovic, C. Spirig, D. Domeisen},
+@misc{pyrina2026_ch_downscaling,
+      title={Joint Bias Correction and Downscaling of Subseasonal Forecasts via Diffusion Models}, 
+      author={M. Pyrina, A. Imamovic, D. Büeler, C. Spirig, D. I. V. Domeisen},
       year={2026},
       eprint=xxx,
       archivePrefix={arXiv},
