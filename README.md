@@ -3,8 +3,6 @@
 ## Generative diffusion-based downscaling for climate
 #### Robbie A. Watt & Laura A. Mansfield      <https://arxiv.org/abs/2404.17752> using the implementation by T. Karras et al. (<https://arxiv.org/abs/2206.00364>) and code addapted from <https://github.com/NVlabs/edm>.
 
-![plot](./example.png)
-
 This repo contains code to go alongside "Joint Bias Correction and Downscaling of Subseasonal Forecasts via Diffusion Models" (2026) preprint. In this work, we apply a diffusion based model (DM) to a downscaling and bias correction task using ECMWF subseasonal temperature hindcast data and gridded temperature observations from MeteoSwiss over Switzerland.
 
 
