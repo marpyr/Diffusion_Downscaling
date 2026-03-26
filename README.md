@@ -9,7 +9,6 @@ This repo contains code to go alongside "Joint Bias Correction and Downscaling o
 ## File structure
 * src_mean: contains code used to train, validate, and test the DM model using the ensemble mean (used in the manuscript)
 * src_mems: contains code used to train, validate, and test the DM model using the ensemble members (not used in the manuscript, only partly tested)
-* Model_chpt: contains model checkpoints for the src_mean training
 
 ### Data
 We are using ECMWF subseasonal hindcast data and gridded observational data from MeteoSwiss.
